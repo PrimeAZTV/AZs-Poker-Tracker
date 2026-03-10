@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poker Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --felt: #0d1f16;
+    --felt-mid: #122318;
+    --felt-surface: #182e1f;
+    --gold: #c8a84b;
+    --gold-dim: #9c7d32;
+    --gold-light: rgba(200,168,75,0.12);
+    --emerald: #2ecc71;
+    --emerald-dim: rgba(46,204,113,0.15);
+    --red: #e74c3c;
+    --red-dim: rgba(231,76,60,0.15);
+    --text: #f0ede6;
+    --text-muted: #8a9e8e;
+    --border: rgba(200,168,75,0.18);
+    --border-subtle: rgba(255,255,255,0.07);
+    --radius: 14px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: var(--felt);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 80px;
+    background-image:
+      radial-gradient(ellipse 80% 40% at 50% -10%, rgba(200,168,75,0.06) 0%, transparent 70%),
+      repeating-linear-gradient(45deg, transparent, transparent 40px, rgba(255,255,255,0.008) 40px, rgba(255,255,255,0.008) 41px);
+  }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #0a1a10 0%, #122318 50%, #0d1f16 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  header::before {
+    content: "♠ ♥ ♦ ♣";
+    position: absolute;
+    right: 20px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 4rem;
+    opacity: 0.06;
+    letter-spacing: 12px;
+    pointer-events: none;
+  }
+  .header-inner { max-width: 960px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  header h1 { font-family: 'Playfair Display', serif; font-size: clamp(1.4rem, 4vw, 2rem); font-weight: 700; color: var(--text); }
+  header h1 span { color: var(--gold); }
+  .header-user { display: flex; align-items: center; gap: 12px; }
+  .user-email { font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── Auth Screen ── */
+  .auth-wrap {
+    max-width: 420px;
+    margin: 60px auto;
+    padding: 0 20px;
+  }
+  .auth-card {
+    background: var(--felt-surface);
+    border-radius: 20px;
+    padding: 36px 36px 32px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+  .auth-logo { text-align: center; margin-bottom: 24px; }
+  .auth-suits { font-size: 1.8rem; letter-spacing: 8px; opacity: 0.35; display: block; margin-bottom: 10px; }
+  .auth-logo h2 { font-family: 'Playfair Display', serif; font-size: 1.7rem; }
+  .auth-logo h2 span { color: var(--gold); }
+
+  /* Tabs */
+  .auth-tabs { display: flex; border-bottom: 1px solid var(--border-subtle); margin-bottom: 28px; }
+  .auth-tab {
+    flex: 1; text-align: center;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--text-muted); padding: 10px 0; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: all 0.15s;
+  }
+  .auth-tab:hover { color: var(--text); }
+  .auth-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+  /* Panels */
+  .auth-panel { display: none; }
+  .auth-panel.active { display: block; }
+  .auth-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .auth-field label { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+  .auth-field input { width: 100%; }
+  .auth-submit { width: 100%; margin-top: 6px; }
+  .auth-footer-link {
+    text-align: center; margin-top: 16px;
+    font-size: 0.78rem; color: var(--text-muted);
+  }
+  .auth-footer-link button {
+    background: none; border: none; color: var(--gold);
+    font-size: 0.78rem; cursor: pointer; text-decoration: underline;
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  .auth-message { font-size: 0.82rem; margin-top: 14px; padding: 12px 16px; border-radius: 10px; display: none; line-height: 1.5; }
+  .auth-message.success { background: var(--emerald-dim); color: var(--emerald); border: 1px solid rgba(46,204,113,0.2); display: block; }
+  .auth-message.error   { background: var(--red-dim);     color: var(--red);     border: 1px solid rgba(231,76,60,0.2);  display: block; }
+  .password-wrap { position: relative; }
+  .password-wrap input { padding-right: 44px; }
+  .toggle-pw {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 0.8rem; padding: 4px;
+  }
+  .toggle-pw:hover { color: var(--text); }
+
+  /* ── Loading ── */
+  .loading-screen { text-align: center; padding: 80px 20px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-screen p { color: var(--text-muted); font-size: 0.88rem; }
+
+  /* ── Container ── */
+  .container { max-width: 960px; margin: auto; padding: 28px 20px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--felt-surface);
+    border-radius: var(--radius);
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-subtle);
+    position: relative;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, rgba(200,168,75,0.03) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .card h3 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.6rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+    margin-bottom: 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h3::before { content: ""; width: 3px; height: 12px; background: var(--gold); border-radius: 2px; display: inline-block; }
+
+  /* ── Form ── */
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 14px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); }
+  input, select, textarea {
+    font-family: 'IBM Plex Sans', sans-serif; font-size: 0.9rem; padding: 10px 14px;
+    border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.1);
+    background: rgba(0,0,0,0.25); color: var(--text); outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s; width: 100%; -webkit-appearance: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--gold-dim); box-shadow: 0 0 0 3px rgba(200,168,75,0.1); }
+  select option { background: #182e1f; color: var(--text); }
+  textarea { resize: vertical; min-height: 80px; line-height: 1.55; }
+  input[readonly] { background: var(--emerald-dim); color: var(--emerald); font-weight: 600; font-family: 'IBM Plex Mono', monospace; cursor: default; border-color: rgba(46,204,113,0.2); }
+  input[readonly].negative { background: var(--red-dim); color: var(--red); border-color: rgba(231,76,60,0.2); }
+
+  /* ── Buttons ── */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 20px; border-radius: 10px; border: none; font-family: 'IBM Plex Sans', sans-serif; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .btn-primary { background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dim) 100%); color: #0d1f16; box-shadow: 0 2px 12px rgba(200,168,75,0.3); }
+  .btn-primary:hover:not(:disabled) { box-shadow: 0 4px 20px rgba(200,168,75,0.45); transform: translateY(-1px); }
+  .btn-secondary { background: rgba(255,255,255,0.06); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1); }
+  .btn-secondary:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+  .btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid rgba(231,76,60,0.2); }
+  .btn-danger:hover { background: rgba(231,76,60,0.25); }
+  .btn-edit { background: var(--emerald-dim); color: var(--emerald); border: 1px solid rgba(46,204,113,0.2); }
+  .btn-edit:hover { background: rgba(46,204,113,0.25); }
+  .btn-notes { background: rgba(200,168,75,0.1); color: var(--gold); border: 1px solid rgba(200,168,75,0.2); }
+  .btn-notes:hover { background: rgba(200,168,75,0.18); }
+  .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 8px; }
+  .btn-signout { font-family: 'IBM Plex Mono', monospace; font-size: 0.62rem; letter-spacing: 0.06em; padding: 5px 12px; border-radius: 8px; background: rgba(255,255,255,0.06); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1); cursor: pointer; transition: all 0.15s; }
+  .btn-signout:hover { color: var(--red); border-color: rgba(231,76,60,0.3); background: var(--red-dim); }
+  .form-actions { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 4px; }
+  .notes-row { grid-column: 1 / -1; }
+
+  /* ── Edit Banner ── */
+  #edit-banner { display: none; background: rgba(200,168,75,0.08); border: 1px solid rgba(200,168,75,0.3); border-radius: 10px; padding: 10px 16px; font-size: 0.82rem; font-weight: 600; color: var(--gold); margin-bottom: 18px; align-items: center; justify-content: space-between; }
+  #edit-banner.visible { display: flex; }
+
+  /* ── Sync status ── */
+  .sync-badge { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; letter-spacing: 0.08em; padding: 3px 10px; border-radius: 20px; display: inline-flex; align-items: center; gap: 5px; }
+  .sync-badge.syncing { background: rgba(200,168,75,0.1); color: var(--gold); }
+  .sync-badge.synced  { background: var(--emerald-dim); color: var(--emerald); }
+  .sync-badge.error   { background: var(--red-dim); color: var(--red); }
+
+  /* ── Filters ── */
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .filters select { flex: 1; min-width: 140px; }
+  #custom-range { display: none; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  #custom-range.visible { display: flex; }
+  #custom-range input { flex: 1; min-width: 140px; }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x: auto; border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  thead th { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody tr { transition: background 0.12s; }
+  tbody tr:hover { background: rgba(255,255,255,0.03); }
+  tbody td { padding: 11px 12px; border-bottom: 1px solid var(--border-subtle); vertical-align: middle; color: var(--text); font-size: 0.875rem; }
+  .profit-positive { color: var(--emerald); font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+  .profit-negative { color: var(--red); font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+  .action-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .empty-state { text-align: center; padding: 48px 0; color: var(--text-muted); font-size: 0.9rem; }
+  .pagination { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 18px; }
+  #page-info { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); min-width: 60px; text-align: center; }
+
+  /* ── Stats ── */
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; }
+  .stat-item { background: rgba(0,0,0,0.2); border-radius: 12px; padding: 18px 16px; border: 1px solid var(--border-subtle); transition: transform 0.2s, border-color 0.2s; }
+  .stat-item:hover { transform: translateY(-2px); border-color: var(--border); }
+  .stat-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; }
+  .stat-value { font-family: 'Playfair Display', serif; font-size: 1.5rem; line-height: 1; color: var(--text); }
+  .stat-value.positive { color: var(--emerald); }
+  .stat-value.negative { color: var(--red); }
+
+  /* ── Chart ── */
+  .chart-controls { display: flex; gap: 8px; margin-bottom: 20px; }
+  .btn-toggle { font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem; letter-spacing: 0.08em; font-weight: 600; padding: 6px 16px; border-radius: 8px; border: 1.5px solid rgba(255,255,255,0.1); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.15s; text-transform: uppercase; }
+  .btn-toggle.active { background: var(--gold-light); color: var(--gold); border-color: rgba(200,168,75,0.35); }
+  canvas { max-height: 280px; }
+
+  /* ── Modal ── */
+  .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; padding: 20px; backdrop-filter: blur(4px); }
+  .modal-backdrop.open { display: flex; }
+  .modal { background: var(--felt-surface); border-radius: 20px; width: 100%; max-width: 520px; box-shadow: 0 24px 80px rgba(0,0,0,0.7); overflow: hidden; animation: modalIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); border: 1px solid var(--border); }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: none; } }
+  .modal-header { padding: 22px 24px 18px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .modal-header-info h2 { font-family: 'Playfair Display', serif; font-size: 1.3rem; color: var(--text); margin-bottom: 6px; }
+  .modal-meta { font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 12px; flex-wrap: wrap; }
+  .modal-close { background: rgba(255,255,255,0.07); border: none; border-radius: 8px; width: 32px; height: 32px; font-size: 1rem; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
+  .modal-close:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+  .modal-body { padding: 22px 24px; }
+  .modal-body label { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 10px; }
+  .notes-view { background: rgba(0,0,0,0.2); border: 1px solid var(--border-subtle); border-radius: 10px; padding: 14px 16px; min-height: 100px; font-size: 0.9rem; line-height: 1.65; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+  .notes-view.empty-notes { color: var(--text-muted); font-style: italic; }
+  #modal-notes-edit { min-height: 140px; font-size: 0.9rem; line-height: 1.65; }
+  .modal-footer { padding: 14px 24px 22px; display: flex; gap: 10px; justify-content: flex-end; border-top: 1px solid var(--border-subtle); }
+
+  /* ── Footer ── */
+  .page-footer { max-width: 960px; margin: 40px auto 0; padding: 24px 20px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  .footer-brand { font-family: 'Playfair Display', serif; font-size: 1rem; color: var(--text); }
+  .footer-note { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; letter-spacing: 0.08em; color: var(--text-muted); }
+
+  @media (max-width: 640px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    thead th:nth-child(2), tbody td:nth-child(2) { display: none; }
+    thead th:nth-child(5), tbody td:nth-child(5) { display: none; }
+    .header-inner { gap: 10px; }
+    .user-email { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<header>
+  <div class="header-inner">
+    <h1>Poker <span>Tracker</span></h1>
+    <div class="header-user" id="header-user" style="display:none">
+      <span class="user-email" id="user-email-display"></span>
+      <span class="sync-badge synced" id="sync-badge">● synced</span>
+      <button class="btn-signout" onclick="signOut()">Sign Out</button>
+    </div>
+  </div>
+</header>
+
+<!-- ── Loading Screen ── -->
+<div id="loading-screen" class="loading-screen">
+  <div class="spinner"></div>
+  <p>Loading your sessions…</p>
+</div>
+
+<!-- ── Auth Screen ── -->
+<div id="auth-screen" style="display:none">
+  <div class="auth-wrap">
+    <div class="auth-card">
+
+      <div class="auth-logo">
+        <span class="auth-suits">♠ ♥ ♦ ♣</span>
+        <h2>Poker <span>Tracker</span></h2>
+      </div>
+
+      <!-- Tabs -->
+      <div class="auth-tabs">
+        <div class="auth-tab active" id="tab-signin" onclick="switchAuthTab('signin')">Sign In</div>
+        <div class="auth-tab" id="tab-signup" onclick="switchAuthTab('signup')">Sign Up</div>
+      </div>
+
+      <!-- Sign In Panel -->
+      <div class="auth-panel active" id="panel-signin">
+        <div class="auth-field">
+          <label>Email</label>
+          <input type="email" id="signin-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="password-wrap">
+            <input type="password" id="signin-password" placeholder="••••••••" autocomplete="current-password">
+            <button class="toggle-pw" onclick="togglePw('signin-password', this)" tabindex="-1">👁</button>
+          </div>
+        </div>
+        <button class="btn btn-primary auth-submit" onclick="signIn()" id="signin-btn">Sign In</button>
+        <div class="auth-footer-link">
+          <button onclick="switchAuthTab('forgot')">Forgot your password?</button>
+        </div>
+        <div class="auth-message" id="signin-message"></div>
+      </div>
+
+      <!-- Sign Up Panel -->
+      <div class="auth-panel" id="panel-signup">
+        <div class="auth-field">
+          <label>Email</label>
+          <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label>Password</label>
+          <div class="password-wrap">
+            <input type="password" id="signup-password" placeholder="Min. 6 characters" autocomplete="new-password">
+            <button class="toggle-pw" onclick="togglePw('signup-password', this)" tabindex="-1">👁</button>
+          </div>
+        </div>
+        <div class="auth-field">
+          <label>Confirm Password</label>
+          <div class="password-wrap">
+            <input type="password" id="signup-confirm" placeholder="••••••••" autocomplete="new-password">
+            <button class="toggle-pw" onclick="togglePw('signup-confirm', this)" tabindex="-1">👁</button>
+          </div>
+        </div>
+        <button class="btn btn-primary auth-submit" onclick="signUp()" id="signup-btn">Create Account</button>
+        <div class="auth-footer-link">
+          Already have an account? <button onclick="switchAuthTab('signin')">Sign in</button>
+        </div>
+        <div class="auth-message" id="signup-message"></div>
+      </div>
+
+      <!-- Forgot Password Panel -->
+      <div class="auth-panel" id="panel-forgot">
+        <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px;line-height:1.6">Enter your email and we'll send you a link to reset your password.</p>
+        <div class="auth-field">
+          <label>Email</label>
+          <input type="email" id="forgot-email" placeholder="you@example.com">
+        </div>
+        <button class="btn btn-primary auth-submit" onclick="resetPassword()" id="forgot-btn">Send Reset Link</button>
+        <div class="auth-footer-link">
+          <button onclick="switchAuthTab('signin')">← Back to Sign In</button>
+        </div>
+        <div class="auth-message" id="forgot-message"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── App ── -->
+<div id="app-screen" style="display:none">
+  <div class="container">
+
+    <div class="card">
+      <h3>Log Session</h3>
+      <div id="edit-banner">
+        <span>✏️ Editing session — make your changes and save</span>
+        <button class="btn btn-sm btn-secondary" onclick="cancelEdit()">Cancel</button>
+      </div>
+      <form id="session-form">
+        <input type="hidden" id="edit-id">
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="date">Date</label>
+            <input type="date" id="date" required>
+          </div>
+          <div class="form-group">
+            <label for="location">Location</label>
+            <input type="text" id="location" placeholder="e.g. Aria, Home Game" required>
+          </div>
+          <div class="form-group">
+            <label for="hours">Hours</label>
+            <input type="number" id="hours" step="0.1" min="0" placeholder="0.0" required>
+          </div>
+          <div class="form-group">
+            <label for="buyin">Buy-in ($)</label>
+            <input type="number" id="buyin" step="0.01" min="0" placeholder="0.00" required>
+          </div>
+          <div class="form-group">
+            <label for="cashout">Cashout ($)</label>
+            <input type="number" id="cashout" step="0.01" min="0" placeholder="0.00" required>
+          </div>
+          <div class="form-group">
+            <label for="profit">Profit ($)</label>
+            <input type="number" id="profit" placeholder="0.00" readonly tabindex="-1">
+          </div>
+          <div class="form-group notes-row">
+            <label for="notes">Session Notes <span style="font-weight:400;text-transform:none;letter-spacing:0;font-family:'IBM Plex Sans';color:var(--text-muted)">(optional)</span></label>
+            <textarea id="notes" placeholder="e.g. Great run early, bluffed off a big pot on the river…"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="save-btn">Save Session</button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Sessions</h3>
+      <div class="filters">
+        <select id="filter-type">
+          <option value="all">All Time</option>
+          <option value="monthly">This Month</option>
+          <option value="yearly">This Year</option>
+          <option value="custom">Custom Range</option>
+        </select>
+        <select id="sort-order">
+          <option value="desc">Newest First</option>
+          <option value="asc">Oldest First</option>
+        </select>
+      </div>
+      <div id="custom-range">
+        <input type="date" id="start-date">
+        <input type="date" id="end-date">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Date</th><th>Location</th><th>Hours</th><th>Profit</th><th>Notes</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="session-table"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <button class="btn btn-secondary btn-sm" onclick="prevPage()">← Prev</button>
+        <span id="page-info"></span>
+        <button class="btn btn-secondary btn-sm" onclick="nextPage()">Next →</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Statistics</h3>
+      <div class="stats-grid">
+        <div class="stat-item"><div class="stat-label">Total Profit</div><div class="stat-value" id="total-profit">$0</div></div>
+        <div class="stat-item"><div class="stat-label">Total Hours</div><div class="stat-value" id="total-hours">0</div></div>
+        <div class="stat-item"><div class="stat-label">Hourly Rate</div><div class="stat-value" id="hourly-rate">$0</div></div>
+        <div class="stat-item"><div class="stat-label">Win Rate</div><div class="stat-value" id="win-rate">0%</div></div>
+        <div class="stat-item"><div class="stat-label">Sessions</div><div class="stat-value" id="session-count">0</div></div>
+        <div class="stat-item"><div class="stat-label">Avg Profit</div><div class="stat-value" id="avg-profit">$0</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Profit Chart</h3>
+      <div class="chart-controls">
+        <button class="btn-toggle active" id="toggle-cumulative" onclick="setChartMode('cumulative')">Cumulative</button>
+        <button class="btn-toggle" id="toggle-session" onclick="setChartMode('session')">Per Session</button>
+      </div>
+      <canvas id="profitChart"></canvas>
+    </div>
+
+  </div>
+
+  <div class="page-footer">
+    <div class="footer-brand">Poker <span style="color:var(--gold)">Tracker</span></div>
+    <div class="footer-note">Your data is synced securely to the cloud ☁️</div>
+  </div>
+</div>
+
+<!-- ── Reset Password Screen ── -->
+<div id="reset-screen" style="display:none">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">
+        <span class="auth-suits">♠ ♥ ♦ ♣</span>
+        <h2>Set New <span>Password</span></h2>
+      </div>
+      <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:20px;line-height:1.6;text-align:center">Choose a new password for your account.</p>
+      <div class="auth-field">
+        <label>New Password</label>
+        <div class="password-wrap">
+          <input type="password" id="reset-password" placeholder="Min. 6 characters" autocomplete="new-password">
+          <button class="toggle-pw" onclick="togglePw('reset-password', this)" tabindex="-1">👁</button>
+        </div>
+      </div>
+      <div class="auth-field">
+        <label>Confirm New Password</label>
+        <div class="password-wrap">
+          <input type="password" id="reset-confirm" placeholder="••••••••" autocomplete="new-password">
+          <button class="toggle-pw" onclick="togglePw('reset-confirm', this)" tabindex="-1">👁</button>
+        </div>
+      </div>
+      <button class="btn btn-primary auth-submit" onclick="updatePassword()" id="reset-btn">Update Password</button>
+      <div class="auth-message" id="reset-message"></div>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop" id="notes-modal" onclick="handleBackdropClick(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-header-info">
+        <h2 id="modal-title">Session Notes</h2>
+        <div class="modal-meta">
+          <span id="modal-date"></span>
+          <span id="modal-location"></span>
+          <span id="modal-profit-badge"></span>
+        </div>
+      </div>
+      <button class="modal-close" onclick="closeNotesModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label id="modal-notes-label">Notes</label>
+      <div class="notes-view" id="modal-notes-view"></div>
+      <textarea id="modal-notes-edit" placeholder="Write your session notes here…" style="display:none;"></textarea>
+    </div>
+    <div class="modal-footer" id="modal-footer"></div>
+  </div>
+</div>
+
+<script>
+  // ── Supabase Init ──
+  const SUPABASE_URL = 'https://uszfsumvonrbtymzisvx.supabase.co';
+  const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzemZzdW12b25yYnR5bXppc3Z4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMDg2MDEsImV4cCI6MjA4ODY4NDYwMX0.pPXcZjcsc1LjfPbi1-BpTlekGN_Dk_S0Aw41Gw1L10w';
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  // ── State ──
+  let sessions = [];
+  let currentUser = null;
+  let chartMode = 'cumulative';
+  let chart = null;
+  let currentPage = 1;
+  const ROWS_PER_PAGE = 10;
+  let modalSessionId = null;
+  let editingId = null;
+  let isPasswordRecovery = false; // prevent SIGNED_IN from skipping reset screen
+
+  // ── DOM refs ──
+  const dateInput      = document.getElementById('date');
+  const locationInput  = document.getElementById('location');
+  const hoursInput     = document.getElementById('hours');
+  const buyinInput     = document.getElementById('buyin');
+  const cashoutInput   = document.getElementById('cashout');
+  const profitInput    = document.getElementById('profit');
+  const notesInput     = document.getElementById('notes');
+  const editBanner     = document.getElementById('edit-banner');
+  const syncBadge      = document.getElementById('sync-badge');
+
+  // ── Auth ──
+  async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      await onSignedIn(session.user);
+    } else {
+      showScreen('auth');
+    }
+
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        isPasswordRecovery = true;
+        showScreen('reset');
+      } else if (event === 'SIGNED_IN' && session) {
+        if (isPasswordRecovery) return; // stay on reset screen until password is updated
+        await onSignedIn(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        sessions = [];
+        currentUser = null;
+        isPasswordRecovery = false;
+        showScreen('auth');
+      }
+    });
+  }
+
+  async function onSignedIn(user) {
+    currentUser = user;
+    document.getElementById('user-email-display').textContent = user.email;
+    document.getElementById('header-user').style.display = 'flex';
+    showScreen('loading');
+    await loadSessions();
+    // showScreen('app') is now called inside loadSessions
+  }
+
+  async function signIn() {
+    const email    = document.getElementById('signin-email').value.trim();
+    const password = document.getElementById('signin-password').value;
+    const btn      = document.getElementById('signin-btn');
+    if (!email || !password) { showAuthMsg('signin-message', 'Please fill in all fields.', 'error'); return; }
+    btn.disabled = true; btn.textContent = 'Signing in…';
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) {
+      showAuthMsg('signin-message', error.message, 'error');
+      btn.disabled = false; btn.textContent = 'Sign In';
+    }
+    // on success, onAuthStateChange fires and loads the app automatically
+  }
+
+  async function signUp() {
+    const email    = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-password').value;
+    const confirm  = document.getElementById('signup-confirm').value;
+    const btn      = document.getElementById('signup-btn');
+    if (!email || !password) { showAuthMsg('signup-message', 'Please fill in all fields.', 'error'); return; }
+    if (password.length < 6)  { showAuthMsg('signup-message', 'Password must be at least 6 characters.', 'error'); return; }
+    if (password !== confirm)  { showAuthMsg('signup-message', 'Passwords do not match.', 'error'); return; }
+    btn.disabled = true; btn.textContent = 'Creating account…';
+    const { error } = await sb.auth.signUp({ email, password });
+    if (error) {
+      showAuthMsg('signup-message', error.message, 'error');
+      btn.disabled = false; btn.textContent = 'Create Account';
+    } else {
+      showAuthMsg('signup-message', '✅ Account created! Check your email to confirm, then sign in.', 'success');
+      btn.disabled = false; btn.textContent = 'Create Account';
+    }
+  }
+
+  async function resetPassword() {
+    const email = document.getElementById('forgot-email').value.trim();
+    const btn   = document.getElementById('forgot-btn');
+    if (!email) { showAuthMsg('forgot-message', 'Please enter your email address.', 'error'); return; }
+    btn.disabled = true; btn.textContent = 'Sending…';
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.href
+    });
+    if (error) {
+      showAuthMsg('forgot-message', error.message, 'error');
+    } else {
+      showAuthMsg('forgot-message', '✅ Reset link sent! Check your inbox.', 'success');
+    }
+    btn.disabled = false; btn.textContent = 'Send Reset Link';
+  }
+
+  async function updatePassword() {
+    const password = document.getElementById('reset-password').value;
+    const confirm  = document.getElementById('reset-confirm').value;
+    const btn      = document.getElementById('reset-btn');
+    if (!password)              { showAuthMsg('reset-message', 'Please enter a new password.', 'error'); return; }
+    if (password.length < 6)    { showAuthMsg('reset-message', 'Password must be at least 6 characters.', 'error'); return; }
+    if (password !== confirm)   { showAuthMsg('reset-message', 'Passwords do not match.', 'error'); return; }
+    btn.disabled = true; btn.textContent = 'Updating…';
+    const { error } = await sb.auth.updateUser({ password });
+    if (error) {
+      showAuthMsg('reset-message', error.message, 'error');
+      btn.disabled = false; btn.textContent = 'Update Password';
+    } else {
+      showAuthMsg('reset-message', '✅ Password updated! Taking you to the app…', 'success');
+      isPasswordRecovery = false;
+      setTimeout(async () => {
+        const { data: { session } } = await sb.auth.getSession();
+        if (session) await onSignedIn(session.user);
+        else showScreen('auth');
+      }, 1500);
+    }
+  }
+
+  function switchAuthTab(tab) {
+    ['signin','signup','forgot'].forEach(t => {
+      document.getElementById('panel-' + t).classList.toggle('active', t === tab);
+      const tabEl = document.getElementById('tab-' + t);
+      if (tabEl) tabEl.classList.toggle('active', t === tab);
+    });
+    // clear all messages
+    ['signin-message','signup-message','forgot-message'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = ''; el.className = 'auth-message'; }
+    });
+  }
+
+  function togglePw(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (input.type === 'password') { input.type = 'text'; btn.textContent = '🙈'; }
+    else { input.type = 'password'; btn.textContent = '👁'; }
+  }
+
+  function showAuthMsg(id, text, type) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'auth-message ' + type;
+  }
+
+  async function signOut() {
+    await sb.auth.signOut();
+  }
+
+  function showScreen(name) {
+    document.getElementById('loading-screen').style.display = name === 'loading' ? 'block' : 'none';
+    document.getElementById('auth-screen').style.display    = name === 'auth'    ? 'block' : 'none';
+    document.getElementById('reset-screen').style.display   = name === 'reset'   ? 'block' : 'none';
+    document.getElementById('app-screen').style.display     = name === 'app'     ? 'block' : 'none';
+    if (name !== 'app') document.getElementById('header-user').style.display = 'none';
+  }
+
+  // ── Supabase CRUD ──
+  async function loadSessions() {
+    setSyncStatus('syncing');
+    try {
+      const { data, error } = await sb.from('sessions').select('*').eq('user_id', currentUser.id).order('date', { ascending: false });
+      if (error) {
+        console.error('Load error:', error);
+        setSyncStatus('error');
+        // If we can't load, still show the app with empty state rather than hanging
+        sessions = [];
+        renderSessions();
+        showScreen('app');
+        return;
+      }
+      sessions = data || [];
+      setSyncStatus('synced');
+      renderSessions();
+      showScreen('app');
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      sessions = [];
+      setSyncStatus('error');
+      renderSessions();
+      showScreen('app');
+    }
+  }
+
+  async function saveSession(sessionData) {
+    setSyncStatus('syncing');
+    let error;
+    if (editingId) {
+      ({ error } = await sb.from('sessions').update({ ...sessionData, user_id: currentUser.id }).eq('id', editingId).eq('user_id', currentUser.id));
+    } else {
+      ({ error } = await sb.from('sessions').insert({ ...sessionData, user_id: currentUser.id }));
+    }
+    if (error) { setSyncStatus('error'); alert('Error saving session: ' + error.message); return; }
+    setSyncStatus('synced');
+    await loadSessions();
+  }
+
+  async function deleteSessionById(id) {
+    if (!confirm('Delete this session?')) return;
+    setSyncStatus('syncing');
+    const { error } = await sb.from('sessions').delete().eq('id', id).eq('user_id', currentUser.id);
+    if (error) { setSyncStatus('error'); alert('Error deleting: ' + error.message); return; }
+    setSyncStatus('synced');
+    await loadSessions();
+  }
+
+  async function updateNotes(id, notes) {
+    setSyncStatus('syncing');
+    const { error } = await sb.from('sessions').update({ notes }).eq('id', id).eq('user_id', currentUser.id);
+    if (error) { setSyncStatus('error'); return; }
+    setSyncStatus('synced');
+    await loadSessions();
+  }
+
+  function setSyncStatus(status) {
+    const labels = { syncing: '↻ syncing…', synced: '● synced', error: '✕ sync error' };
+    syncBadge.textContent = labels[status];
+    syncBadge.className = 'sync-badge ' + status;
+  }
+
+  // ── Form ──
+  function calculateProfit() {
+    const buyin   = parseFloat(buyinInput.value)   || 0;
+    const cashout = parseFloat(cashoutInput.value) || 0;
+    const profit  = parseFloat((cashout - buyin).toFixed(2));
+    profitInput.value = profit;
+    profitInput.classList.toggle('negative', profit < 0);
+  }
+  buyinInput.addEventListener('input', calculateProfit);
+  cashoutInput.addEventListener('input', calculateProfit);
+
+  document.getElementById('session-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('save-btn');
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+    const buyin   = parseFloat(buyinInput.value)   || 0;
+    const cashout = parseFloat(cashoutInput.value) || 0;
+    const profit  = parseFloat((cashout - buyin).toFixed(2));
+    await saveSession({
+      date:     dateInput.value,
+      location: locationInput.value.trim(),
+      hours:    parseFloat(hoursInput.value),
+      buyin, cashout, profit,
+      notes:    notesInput.value.trim()
+    });
+    resetForm();
+    btn.disabled = false;
+    btn.textContent = 'Save Session';
+  });
+
+  function editSession(id) {
+    const s = sessions.find(x => x.id === id);
+    if (!s) return;
+    dateInput.value     = s.date;
+    locationInput.value = s.location;
+    hoursInput.value    = s.hours;
+    buyinInput.value    = s.buyin;
+    cashoutInput.value  = s.cashout;
+    notesInput.value    = s.notes || '';
+    calculateProfit();
+    editingId = id;
+    document.getElementById('edit-id').value = id;
+    editBanner.classList.add('visible');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cancelEdit() { resetForm(); }
+
+  function resetForm() {
+    document.getElementById('session-form').reset();
+    profitInput.classList.remove('negative');
+    editBanner.classList.remove('visible');
+    editingId = null;
+  }
+
+  // ── Render ──
+  function filterSessions() {
+    const type = document.getElementById('filter-type').value;
+    const now  = new Date();
+    let filtered = sessions.filter(s => {
+      const parts = s.date.split('-').map(Number);
+      const date  = new Date(parts[0], parts[1] - 1, parts[2]);
+      if (type === 'monthly') return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+      if (type === 'yearly')  return date.getFullYear() === now.getFullYear();
+      if (type === 'custom') {
+        const sv = document.getElementById('start-date').value;
+        const ev = document.getElementById('end-date').value;
+        if (!sv || !ev) return true;
+        const sp = sv.split('-').map(Number), ep = ev.split('-').map(Number);
+        return date >= new Date(sp[0],sp[1]-1,sp[2]) && date <= new Date(ep[0],ep[1]-1,ep[2]);
+      }
+      return true;
+    });
+    const sortOrder = document.getElementById('sort-order').value;
+    filtered.sort((a, b) => sortOrder === 'desc' ? new Date(b.date) - new Date(a.date) : new Date(a.date) - new Date(b.date));
+    return filtered;
+  }
+
+  function formatMoney(val) {
+    const abs = Math.abs(val).toFixed(2);
+    return val < 0 ? '-$' + abs : '$' + abs;
+  }
+  function profitClass(val) { return val >= 0 ? 'profit-positive' : 'profit-negative'; }
+
+  function renderSessions() {
+    const filtered   = filterSessions();
+    const totalPages = Math.max(1, Math.ceil(filtered.length / ROWS_PER_PAGE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const paginated = filtered.slice((currentPage - 1) * ROWS_PER_PAGE, currentPage * ROWS_PER_PAGE);
+    const table = document.getElementById('session-table');
+
+    if (filtered.length === 0) {
+      table.innerHTML = "<tr><td colspan='6'><div class='empty-state'>No sessions yet — log your first game above!</div></td></tr>";
+    } else {
+      table.innerHTML = paginated.map(s => {
+        const hasNotes = s.notes && s.notes.trim().length > 0;
+        return `<tr>
+          <td style='font-family:"IBM Plex Mono",monospace;font-size:0.8rem;color:var(--text-muted)'>${s.date}</td>
+          <td>${s.location}</td>
+          <td style='font-family:"IBM Plex Mono",monospace;font-size:0.8rem'>${parseFloat(s.hours).toFixed(1)}h</td>
+          <td class='${profitClass(s.profit)}'>${formatMoney(s.profit)}</td>
+          <td><button class='btn btn-notes btn-sm' onclick='openNotesModal(${s.id})'>${hasNotes ? '📝 View' : '+ Add'}</button></td>
+          <td><div class='action-btns'>
+            <button class='btn btn-edit btn-sm' onclick='editSession(${s.id})'>Edit</button>
+            <button class='btn btn-danger btn-sm' onclick='deleteSessionById(${s.id})'>Delete</button>
+          </div></td>
+        </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('page-info').textContent = currentPage + ' / ' + totalPages;
+
+    let totalProfit = 0, totalHours = 0, wins = 0;
+    filtered.forEach(s => { totalProfit += s.profit; totalHours += parseFloat(s.hours); if (s.profit > 0) wins++; });
+    const n = filtered.length;
+    const hourly    = totalHours > 0 ? totalProfit / totalHours : 0;
+    const avgProfit = n > 0 ? totalProfit / n : 0;
+
+    const tpEl = document.getElementById('total-profit');
+    tpEl.textContent = formatMoney(totalProfit);
+    tpEl.className   = 'stat-value ' + (totalProfit >= 0 ? 'positive' : 'negative');
+
+    const hrEl = document.getElementById('hourly-rate');
+    hrEl.textContent = formatMoney(hourly);
+    hrEl.className   = 'stat-value ' + (hourly >= 0 ? 'positive' : 'negative');
+
+    const apEl = document.getElementById('avg-profit');
+    apEl.textContent = formatMoney(avgProfit);
+    apEl.className   = 'stat-value ' + (avgProfit >= 0 ? 'positive' : 'negative');
+
+    document.getElementById('total-hours').textContent   = totalHours.toFixed(1);
+    document.getElementById('win-rate').textContent      = n ? ((wins / n) * 100).toFixed(1) + '%' : '0%';
+    document.getElementById('session-count').textContent = n;
+
+    updateChart(filtered);
+  }
+
+  function updateChart(dataSessions) {
+    const sorted = [...dataSessions].sort((a, b) => new Date(a.date) - new Date(b.date));
+    let cumulative = 0;
+    const labels = [], data = [];
+    sorted.forEach(s => {
+      labels.push(s.date);
+      if (chartMode === 'cumulative') { cumulative += s.profit; data.push(+cumulative.toFixed(2)); }
+      else { data.push(s.profit); }
+    });
+    if (chart) chart.destroy();
+    if (!data.length) return;
+    const finalValue = chartMode === 'cumulative' ? data[data.length - 1] : data.reduce((a,b) => a+b, 0);
+    const isProfit   = finalValue >= 0;
+    const color      = isProfit ? '#2ecc71' : '#e74c3c';
+    const colorBg    = isProfit ? 'rgba(46,204,113,0.1)' : 'rgba(231,76,60,0.1)';
+    chart = new Chart(document.getElementById('profitChart'), {
+      type: 'line',
+      data: { labels, datasets: [{ data, borderWidth: 2, tension: 0.4, borderColor: color, backgroundColor: colorBg, fill: true, pointRadius: data.length > 30 ? 2 : 5, pointHoverRadius: 7, pointBackgroundColor: color, pointBorderColor: 'rgba(0,0,0,0.3)', pointBorderWidth: 1 }] },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: 'rgba(13,31,22,0.95)', borderColor: 'rgba(200,168,75,0.3)', borderWidth: 1, titleColor: '#8a9e8e', bodyColor: '#f0ede6', titleFont: { family: "'IBM Plex Mono', monospace", size: 11 }, bodyFont: { family: "'IBM Plex Mono', monospace", size: 12 }, callbacks: { label: ctx => ' ' + formatMoney(ctx.parsed.y) } }
+        },
+        scales: {
+          y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { callback: val => formatMoney(val), font: { family: "'IBM Plex Mono', monospace", size: 10 }, color: '#8a9e8e' } },
+          x: { grid: { display: false }, ticks: { maxTicksLimit: 8, font: { family: "'IBM Plex Mono', monospace", size: 10 }, color: '#8a9e8e' } }
+        }
+      }
+    });
+  }
+
+  function setChartMode(mode) {
+    chartMode = mode;
+    document.getElementById('toggle-cumulative').classList.toggle('active', mode === 'cumulative');
+    document.getElementById('toggle-session').classList.toggle('active', mode === 'session');
+    updateChart(filterSessions());
+  }
+
+  function nextPage() { if (currentPage < Math.ceil(filterSessions().length / ROWS_PER_PAGE)) { currentPage++; renderSessions(); } }
+  function prevPage() { if (currentPage > 1) { currentPage--; renderSessions(); } }
+
+  // ── Notes Modal ──
+  function openNotesModal(id) {
+    modalSessionId = id;
+    const s = sessions.find(x => x.id === id);
+    if (!s) return;
+    document.getElementById('modal-title').textContent    = s.location || 'Session';
+    document.getElementById('modal-date').textContent     = '📅 ' + s.date;
+    document.getElementById('modal-location').textContent = s.location ? '📍 ' + s.location : '';
+    const pb = document.getElementById('modal-profit-badge');
+    pb.textContent = (s.profit >= 0 ? '▲ ' : '▼ ') + formatMoney(s.profit);
+    pb.style.color = s.profit >= 0 ? 'var(--emerald)' : 'var(--red)';
+    pb.style.fontFamily = "'IBM Plex Mono', monospace";
+    pb.style.fontWeight = '600';
+    showNotesViewMode(s.notes || '');
+    document.getElementById('notes-modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function showNotesViewMode(notesText) {
+    const view = document.getElementById('modal-notes-view');
+    const edit = document.getElementById('modal-notes-edit');
+    const footer = document.getElementById('modal-footer');
+    edit.style.display = 'none';
+    view.style.display = 'block';
+    document.getElementById('modal-notes-label').textContent = 'Notes';
+    if (notesText.trim()) { view.textContent = notesText; view.classList.remove('empty-notes'); }
+    else { view.textContent = 'No notes for this session yet.'; view.classList.add('empty-notes'); }
+    footer.innerHTML = "<button class='btn btn-secondary' onclick='closeNotesModal()'>Close</button><button class='btn btn-primary' onclick='switchToEditMode()'>✏️ Edit Notes</button>";
+  }
+
+  function switchToEditMode() {
+    const s = sessions.find(x => x.id === modalSessionId);
+    document.getElementById('modal-notes-view').style.display = 'none';
+    const edit = document.getElementById('modal-notes-edit');
+    edit.style.display = 'block';
+    edit.value = s ? s.notes || '' : '';
+    document.getElementById('modal-notes-label').textContent = 'Edit Notes';
+    edit.focus();
+    document.getElementById('modal-footer').innerHTML = "<button class='btn btn-secondary' onclick='cancelNotesEdit()'>Cancel</button><button class='btn btn-primary' onclick='saveNotesFromModal()'>Save Notes</button>";
+  }
+
+  function cancelNotesEdit() {
+    const s = sessions.find(x => x.id === modalSessionId);
+    showNotesViewMode(s ? s.notes || '' : '');
+  }
+
+  async function saveNotesFromModal() {
+    const newNotes = document.getElementById('modal-notes-edit').value.trim();
+    await updateNotes(modalSessionId, newNotes);
+    showNotesViewMode(newNotes);
+  }
+
+  function closeNotesModal() {
+    document.getElementById('notes-modal').classList.remove('open');
+    document.body.style.overflow = '';
+    modalSessionId = null;
+  }
+
+  function handleBackdropClick(e) {
+    if (e.target === document.getElementById('notes-modal')) closeNotesModal();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('notes-modal').classList.contains('open')) closeNotesModal();
+  });
+
+  document.getElementById('filter-type').addEventListener('change', function() {
+    document.getElementById('custom-range').classList.toggle('visible', this.value === 'custom');
+    currentPage = 1; renderSessions();
+  });
+  document.getElementById('sort-order').addEventListener('change', () => { currentPage = 1; renderSessions(); });
+  document.getElementById('start-date').addEventListener('change', () => { currentPage = 1; renderSessions(); });
+  document.getElementById('end-date').addEventListener('change',   () => { currentPage = 1; renderSessions(); });
+
+  // Enter key support for auth
+  document.getElementById('signin-email').addEventListener('keydown',    e => { if (e.key === 'Enter') signIn(); });
+  document.getElementById('signin-password').addEventListener('keydown', e => { if (e.key === 'Enter') signIn(); });
+  document.getElementById('signup-confirm').addEventListener('keydown',  e => { if (e.key === 'Enter') signUp(); });
+  document.getElementById('forgot-email').addEventListener('keydown',    e => { if (e.key === 'Enter') resetPassword(); });
+  document.getElementById('reset-confirm').addEventListener('keydown',   e => { if (e.key === 'Enter') updatePassword(); });
+
+  // ── Kick off ──
+  init();
+</script>
+</body>
+</html>
